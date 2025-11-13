@@ -14,11 +14,22 @@ services:
       - JAEGER_ENDPOINT=http://jaeger:14268/api/traces
     ports:
       - "9001:8080"
+    # ホストのソースをマウントして編集を即時反映し、air をコマンドで実行する
+    volumes:
+      - ./backend:/usr/src/backend:cached
+      - go-pkg:/go/pkg
+      - go-build:/root/.cache/go-build
+    command: ["air", "-c", ".air.toml"]
+    tty: true
     depends_on:
       db:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS -o /dev/null http://localhost:8080/api/health || exit 1"]
+      test:
+        [
+          "CMD-SHELL",
+          "curl -fsS -o /dev/null http://localhost:8080/api/health || exit 1",
+        ]
       interval: 60s
       timeout: 5s
       retries: 5
@@ -42,8 +53,9 @@ services:
       backend:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS -o /dev/null http://localhost:3000 || exit 1"]
-      interval: 60s  # 15s → 60s に変更
+      test:
+        ["CMD-SHELL", "curl -fsS -o /dev/null http://localhost:3000 || exit 1"]
+      interval: 60s # 15s → 60s に変更
       timeout: 10s
       retries: 5
       start_period: 60s
@@ -82,8 +94,8 @@ services:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
       timeout: 20s
       retries: 15
-      interval: 60s  
-      start_period: 60s  # ----------------------------------------------------
+      interval: 60s
+      start_period: 60s # ----------------------------------------------------
   # Nginx サービス: リバースプロキシと静的ファイル配信
   # ----------------------------------------------------
   nginx:
@@ -102,7 +114,8 @@ services:
       - network
     command: ["nginx", "-g", "daemon off;"]
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS -o /dev/null http://localhost:80 || exit 1"]
+      test:
+        ["CMD-SHELL", "curl -fsS -o /dev/null http://localhost:80 || exit 1"]
       interval: 60s
       timeout: 10s
       retries: 3
@@ -128,8 +141,9 @@ services:
         max-size: "10m"
         max-file: "2"
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS -o /dev/null http://localhost:9004 || exit 1"]
-      interval: 120s  # 30s → 120s に変更
+      test:
+        ["CMD-SHELL", "curl -fsS -o /dev/null http://localhost:9004 || exit 1"]
+      interval: 120s # 30s → 120s に変更
       timeout: 10s
       retries: 3
       start_period: 20s
@@ -137,3 +151,7 @@ services:
 networks:
   network:
     driver: bridge
+
+volumes:
+  go-pkg:
+  go-build:

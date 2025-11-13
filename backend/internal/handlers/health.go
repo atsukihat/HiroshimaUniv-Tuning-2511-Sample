@@ -8,6 +8,8 @@ import (
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"fmt"
 )
 
 func HealthHandler(w http.ResponseWriter, r *http.Request) {
@@ -18,6 +20,17 @@ func HealthHandler(w http.ResponseWriter, r *http.Request) {
 	tracer := otel.Tracer("product-search-backend")
 	_, span := tracer.Start(r.Context(), "health_check")
 	defer span.End()
+
+    testError := r.URL.Query().Get("test_error")
+    if testError == "true" {
+        err := fmt.Errorf("テスト用エラー: システムチェック失敗")
+        span.RecordError(err)
+        span.SetStatus(codes.Error, "Health check failed")
+        span.SetAttributes(attribute.String("error.type", "test_error"))
+        log.Printf("[ERROR] Test error triggered: %v", err)
+        http.Error(w, "Health check failed", http.StatusInternalServerError)
+        return
+    }
 
 	setJSONHeaders(w)
 	response := map[string]string{
