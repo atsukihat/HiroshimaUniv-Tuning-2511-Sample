@@ -29,7 +29,7 @@ func (h *ProductHandler) GetProducts(w http.ResponseWriter, r *http.Request) {
 
 	// トレースの開始
 	tracer := otel.Tracer("product-search-backend")
-	_, span := tracer.Start(r.Context(), "get_products")
+	ctx, span := tracer.Start(r.Context(), "get_products")
 	defer span.End()
 
 	setJSONHeaders(w)
@@ -52,30 +52,65 @@ func (h *ProductHandler) GetProducts(w http.ResponseWriter, r *http.Request) {
 	offset := (page - 1) * limit
 	log.Printf("[API] Processed params - page: %d, limit: %d, offset: %d", page, limit, offset)
 
-	// 総件数を取得
-	log.Println("[DB] Executing count query...")
-	var totalCount int
-	err = h.db.Get(&totalCount, "SELECT COUNT(*) FROM products")
-	if err != nil {
-		log.Printf("[DB ERROR] Failed to get total count: %v", err)
-		span.SetAttributes(attribute.String("error", err.Error()))
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
-	log.Printf("[DB] Total products count: %d", totalCount)
+	// // 総件数を取得
+	// log.Println("[DB] Executing count query...")
+	// var totalCount int
+	// err = h.db.Get(&totalCount, "SELECT COUNT(*) FROM products")
+	// if err != nil {
+	// 	log.Printf("[DB ERROR] Failed to get total count: %v", err)
+	// 	span.SetAttributes(attribute.String("error", err.Error()))
+	// 	http.Error(w, "Internal server error", http.StatusInternalServerError)
+	// 	return
+	// }
+	// log.Printf("[DB] Total products count: %d", totalCount)
 
-	// 製品データを取得
-	log.Printf("[DB] Executing products query with limit: %d, offset: %d", limit, offset)
-	products := []models.Product{}
-	query := "SELECT id, name, category, brand, model, description, price, created_at FROM products ORDER BY id LIMIT ? OFFSET ?"
-	err = h.db.Select(&products, query, limit, offset)
-	if err != nil {
-		log.Printf("[DB ERROR] Failed to get products: %v", err)
-		span.SetAttributes(attribute.String("error", err.Error()))
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
-	log.Printf("[DB] Retrieved %d products", len(products))
+    // 総件数取得用の子スパンを追加（親のコンテキストを使用）
+    _, countSpan := tracer.Start(ctx, "database_count_query")
+    defer countSpan.End()
+    countSpan.SetAttributes(attribute.String("query_type", "COUNT"))
+
+    var totalCount int
+    err = h.db.Get(&totalCount, "SELECT COUNT(*) FROM products")
+    if err != nil {
+        span.SetAttributes(attribute.String("error", err.Error()))
+        countSpan.SetAttributes(attribute.String("error", err.Error()))
+        // エラーハンドリング...
+        return
+    }
+    countSpan.SetAttributes(attribute.Int("total_count", totalCount))
+
+	// // 製品データを取得
+	// log.Printf("[DB] Executing products query with limit: %d, offset: %d", limit, offset)
+	// products := []models.Product{}
+	// query := "SELECT id, name, category, brand, model, description, price, created_at FROM products ORDER BY id LIMIT ? OFFSET ?"
+	// err = h.db.Select(&products, query, limit, offset)
+	// if err != nil {
+	// 	log.Printf("[DB ERROR] Failed to get products: %v", err)
+	// 	span.SetAttributes(attribute.String("error", err.Error()))
+	// 	http.Error(w, "Internal server error", http.StatusInternalServerError)
+	// 	return
+	// }
+	// log.Printf("[DB] Retrieved %d products", len(products))
+
+    _, productsSpan := tracer.Start(ctx, "database_products_query")
+    defer productsSpan.End()
+    productsSpan.SetAttributes(
+        attribute.String("query_type", "SELECT"),
+        attribute.Int("limit", limit),
+        attribute.Int("offset", offset),
+    )
+
+    products := []models.Product{}
+    query := "SELECT id, name, category, brand, model, description, price, created_at FROM products ORDER BY id LIMIT ? OFFSET ?"
+    err = h.db.Select(&products, query, limit, offset)
+    if err != nil {
+        span.SetAttributes(attribute.String("error", err.Error()))
+        productsSpan.SetAttributes(attribute.String("error", err.Error()))
+        // エラーハンドリング...
+        return
+    }
+    productsSpan.SetAttributes(attribute.Int("returned_count", len(products)))
+
 
 	totalPages := int(math.Ceil(float64(totalCount) / float64(limit)))
 	log.Printf("[API] Calculated total pages: %d", totalPages)
