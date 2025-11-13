@@ -81,6 +81,9 @@ func (h *ProductHandler) GetProducts(w http.ResponseWriter, r *http.Request) {
 	log.Printf("[API] Calculated total pages: %d", totalPages)
 
 	span.SetAttributes(
+		attribute.Int("page", page),
+		attribute.Int("limit", limit),
+		// ↑上の2行を追加
 		attribute.Int("total_count", totalCount),
 		attribute.Int("total_pages", totalPages),
 		attribute.Int("returned_count", len(products)),

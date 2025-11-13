@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/jmoiron/sqlx"
+	"go.opentelemetry.io/otel"
+    "go.opentelemetry.io/otel/attribute"
 
 	"sample-backend/internal/models"
 )
@@ -26,6 +28,10 @@ func (h *SearchHandler) SearchProducts(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	log.Printf("[API] Search products request from %s", r.RemoteAddr)
 
+    tracer := otel.Tracer("product-search-backend")
+    _, span := tracer.Start(r.Context(), "search_products")
+    defer span.End()
+
 	setJSONHeaders(w)
 
 	if r.Method != "POST" {
@@ -40,6 +46,13 @@ func (h *SearchHandler) SearchProducts(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
+
+    span.SetAttributes(
+        attribute.String("search.column", searchReq.Column),
+        attribute.String("search.keyword", searchReq.Keyword),
+        attribute.Int("search.page", searchReq.Page),
+        attribute.Int("search.limit", searchReq.Limit),
+    )
 
 	log.Printf("[API] Search request - column: %s, keyword: %s, page: %d, limit: %d",
 		searchReq.Column, searchReq.Keyword, searchReq.Page, searchReq.Limit)
@@ -95,6 +108,11 @@ func (h *SearchHandler) SearchProducts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	log.Printf("[DB] Retrieved %d search results", len(products))
+
+    span.SetAttributes(
+        attribute.Int("search.total_count", totalCount),
+        attribute.Int("search.returned_count", len(products)),
+    )
 
 	totalPages := int(math.Ceil(float64(totalCount) / float64(searchReq.Limit)))
 	log.Printf("[API] Calculated total pages: %d", totalPages)
